@@ -201,21 +201,23 @@ namespace FtpClient
 
         public List<string> ListFilesAndFolders(string folderPath)
         {
-            Command = "PASV";
+            Command = string.Format("CWD {0}", "/");
             _writer.WriteLine(Command);
             Response = _reader.ReadLine();
-            if(Response.StartsWith("227 "))
+            if (Response.StartsWith("250 "))
             {
-                IPEndPoint server_data_endpoint = GetServerEndpoint(Response);
-                Command = string.Format("CWD {0}", "/");
+                Command = "PASV";
                 _writer.WriteLine(Command);
                 Response = _reader.ReadLine();
-                if (Response.StartsWith("250 "))
+                if(Response.StartsWith("227 "))
                 {
-                    Command = string.Format("NLST {0}", folderPath.Replace("\\", "/"));
-                    _writer.WriteLine(Command);
+                    IPEndPoint server_data_endpoint = GetServerEndpoint(Response);
+                    Command = server_data_endpoint.ToString();
                     TcpClient data_channel = new TcpClient();
                     data_channel.Connect(server_data_endpoint);
+
+                    Command = string.Format("NLST {0}", folderPath.Replace("\\", "/"));
+                    _writer.WriteLine(Command);
                     Response = _reader.ReadLine();
                     if (Response.StartsWith("150 "))
                     {
@@ -265,21 +267,23 @@ namespace FtpClient
 
         public void Download(string remoteFolderPath, string remoteFilePath, string localFilePath)
         {
-            Command = "PASV";
+            Command = string.Format("CWD {0}", remoteFolderPath.Replace("\\", "/"));
             _writer.WriteLine(Command);
             Response = _reader.ReadLine();
-            if (Response.StartsWith("227 "))
+            if (Response.StartsWith("250 "))
             {
-                IPEndPoint server_data_endpoint = GetServerEndpoint(Response);
-                Command = string.Format("CWD {0}", remoteFolderPath.Replace("\\","/"));
+                Command = "PASV";
                 _writer.WriteLine(Command);
                 Response = _reader.ReadLine();
-                if (Response.StartsWith("250 "))
+                if (Response.StartsWith("227 "))
                 {
-                    Command = string.Format("RETR {0}", remoteFilePath);
-                    _writer.WriteLine(Command);
+                    IPEndPoint server_data_endpoint = GetServerEndpoint(Response);
+                    Command = server_data_endpoint.ToString();
                     TcpClient data_channel = new TcpClient();
                     data_channel.Connect(server_data_endpoint);
+
+                    Command = string.Format("RETR {0}", remoteFilePath);
+                    _writer.WriteLine(Command);
                     Response = _reader.ReadLine();
                     if (Response.StartsWith("150 "))
                     {
@@ -319,10 +323,12 @@ namespace FtpClient
             if (Response.StartsWith("227 "))
             {
                 IPEndPoint server_data_endpoint = GetServerEndpoint(Response);
-                Command = "LIST";
-                _writer.WriteLine(Command);
+                Command = server_data_endpoint.ToString();
                 TcpClient data_channel = new TcpClient();
                 data_channel.Connect(server_data_endpoint);
+
+                Command = "LIST";
+                _writer.WriteLine(Command);
                 Response = _reader.ReadLine();
                 if (Response.StartsWith("150 "))
                 {

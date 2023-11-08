@@ -12,11 +12,15 @@ namespace FTPServer
 {
     public class FTPServer
     {
+        int a, b;
         TcpListener _controlSocket;
         StreamWriter _writer;
         StreamReader _reader;
+        int _sessionID = 2;
         readonly BindingList<string> _responses = new BindingList<string>();
         readonly BindingList<string> _commands = new BindingList<string>();
+        readonly string _rootPath = @"E:/LEARN-04/PBL4/FileServer";
+
         public string Command
         {
             get => _commands.Last();
@@ -46,9 +50,10 @@ namespace FTPServer
         public bool isRunning;
         public void Start()
         {
-            Address = IPAddress.Parse("192.168.252.118");
+            Address = IPAddress.Parse("127.0.0.1");
             User = "user";
             Password = "mxt@3132003";
+            randomPort();
             _responses.Clear();
             _commands.Clear();
             _controlSocket = new TcpListener(Address, 21);
@@ -57,7 +62,15 @@ namespace FTPServer
             _commands.ListChanged -= Commands_ListChanged;
             _commands.ListChanged += Commands_ListChanged;
             isRunning = true;
-            _controlSocket.Start();
+            try
+            {
+                _controlSocket.Start();
+            }
+            catch
+            {
+                Command = "Lỗi Start Server!!! Vui lòng kiểm tra lại";
+                return;
+            }
             Console.WriteLine("FTP Server is running...");
             while (isRunning)
             {
@@ -79,13 +92,20 @@ namespace FTPServer
             _reader = new StreamReader(client.GetStream());
             _writer = new StreamWriter(client.GetStream()) { AutoFlush = true };
             IPAddress IPClient = ((IPEndPoint)client.Client.RemoteEndPoint).Address;
-            Console.WriteLine(IPClient.ToString());
-            _writer.WriteLine("220-Welcome to FTP Server");
-            _writer.WriteLine("220 FTP Server MXT");
-
+            string _command;
+            int sessionID = GetSessionID();
+            string nameSission = "FTP Session " + sessionID + " " + IPClient.ToString() + " ";
+            _command = "220-Welcome to FTP Server";
+            Command = nameSission + _command;
+            _writer.WriteLine(_command);
+            _command = "220 FTP Server MXT";
+            Command = nameSission + _command;
+            _writer.WriteLine(_command);
+            
             string username = null;
             string password = null;
             bool isLoggedIn = false;
+            string currentFilePath = _rootPath;
             try
             {
                 while (true)
@@ -97,41 +117,110 @@ namespace FTPServer
                     if (request == null)
                         break;
 
-                    Response = request;
+                    Response = nameSission + request;
 
                     string[] parts = request.Split(' ');
                     string command = parts[0].ToUpperInvariant();
+                    if (parts.Length >= 2) parts[1] = string.Join(" ", parts, 1, parts.Length - 1);
 
-                    if (command == "USER" && isLoggedIn == false)
+                    if (isLoggedIn) //Logged in successfully
                     {
-                        Command = "331 User name okay, need password.";
-                        username = parts.Length > 1 ? parts[1] : null;
-                        _writer.WriteLine(Command);
-                    }
-                    else if(command == "USER" && isLoggedIn)
-                    {
-                        Command = "503 Already logged in. QUIT first.";
-                        _writer.WriteLine(Command);
-                    }
-                    else if (command == "PASS")
-                    {
-                        if (username == User && parts.Length > 1 && parts[1] == Password)
+                        if (command == "USER")
                         {
-                            Command = "230 User logged in, proceed.";
-                            isLoggedIn = true;
+                            _command = "503 Already logged in. QUIT first.";
+                            Command = nameSission + _command;
+                            _writer.WriteLine(_command);
+                        }
+                        else if (command == "QUIT")
+                        {
+                            _command = "221 Goodbye";
+                            Command = nameSission + _command;
+                            _writer.WriteLine(_command);
+                            isLoggedIn = false;
+                            break;
+                        }
+                        else if(command == "PASV")
+                        {
+                            string[] ipAddressParts = Address.ToString().Split('.');
+                            string IP = string.Join(",", ipAddressParts);
+                            reNewPort(a, b);
+                            _command = "227 Entering Passive Mode (" + IP + "," + a + "," + b + ")";
+                            Command = nameSission + _command;
+                            TcpListener data_channel = new TcpListener(Address, a * 256 + b);
+                            try
+                            {
+                                data_channel.Start();
+                            }
+                            catch
+                            {
+                                Command = "Lỡ bị lỗi";
+                                reNewPort(a, b);
+                                Command = "227 Entering Passive Mode (" + IP + "," + a + "," + b + ")";
+                                TcpListener data_channels = new TcpListener(Address, a * 256 + b);
+                                data_channels.Start();
+                            }
+                            _writer.WriteLine(_command);
+                        }
+                        else if(command == "CWD")
+                        {
+                            string path = Path.GetFullPath(Path.Combine(_rootPath, parts[1]));
+                            path = path.Replace("\\", "/");
+                            if(parts[1] == "")
+                            {
+                                _command = "501 Missing required argument";
+                            }
+                            else if(!path.StartsWith(_rootPath, StringComparison.OrdinalIgnoreCase))
+                            {
+                                _command = "550 Couldn't open the file or directory";
+                            }
+                            else if(Directory.Exists(path))
+                            {
+                                _command = "250 CWD command successful";
+                                currentFilePath = path;
+                            } 
+                            else
+                            {
+                                _command = "550 Couldn't open the file or directory";
+                            }
+                            Command = nameSission + _command;
                             _writer.WriteLine(Command);
+                        }
+                        else if(command == "NLST")
+                        {
+
+                        }
+                    }
+                    else //Login failed
+                    {
+                        if (command == "USER")
+                        {
+                            _command = "331 User name okay, need password.";
+                            username = parts.Length > 1 ? parts[1] : null;
+                            Command = nameSission + _command;
+                            _writer.WriteLine(_command);
+                        }
+                        else if (command == "PASS")
+                        {
+                            if (username == User && parts.Length > 1 && parts[1] == Password)
+                            {
+                                _command = "230 User logged in, proceed.";
+                                isLoggedIn = true;
+                                Command = nameSission + _command;
+                                _writer.WriteLine(_command);
+                            }
+                            else
+                            {
+                                _command = "530 Not logged in.";
+                                Command = nameSission + _command;
+                                _writer.WriteLine(_command);
+                            }
                         }
                         else
                         {
-                            Command = "530 Not logged in.";
-                            _writer.WriteLine(Command);
+                            _command = "530 Please log in with USER and PASS first.";
+                            Command = nameSission + _command;
+                            _writer.WriteLine(_command);
                         }
-                    } else if(command == "QUIT" && isLoggedIn)
-                    {
-                        Command = "221 Goodbye";
-                        _writer.WriteLine(Command);
-                        isLoggedIn = false;
-                        break;
                     }
                     // Add more FTP commands and functionality here...
                 }
@@ -143,6 +232,43 @@ namespace FTPServer
                 client.Close();
             }
             
+        }
+
+        public void randomPort()
+        {
+            Random random = new Random();
+            a = random.Next(4, 256);
+            b = random.Next(0, 256);
+        }
+
+        public void reNewPort(int a, int b)
+        {
+            b += 2;
+            if (b > 255) a += 1;
+            if (a > 255)
+            {
+                a = 4;
+                if (b % 2 == 0) b = 1;
+                else b = 0;
+            }
+            TcpListener listener = new TcpListener(Address, a * 256 + b);
+            try
+            {
+                listener.Start();
+            }
+            catch (SocketException)
+            {
+                reNewPort(a, b);
+            }
+            finally
+            {
+                listener.Stop();
+            }
+        }
+
+        private int GetSessionID()
+        {
+            return _sessionID++;
         }
 
         public Action<string> ResponseListChangedHandler { get; set; }

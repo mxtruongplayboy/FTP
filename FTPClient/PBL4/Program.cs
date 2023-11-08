@@ -20,11 +20,11 @@ namespace FtpClient
                 CommandListChangedHandler = s => Console.WriteLine("C> {0}", s)
             };
             Console.Write("User: ");
-            client.User = Console.ReadLine();
+            client.User = "user";
             Console.Write("Password: ");
-            client.Password = Console.ReadLine();
+            client.Password = "mxt@3132003";
             Console.Write("IP: ");
-            client.Address = IPAddress.Parse(Console.ReadLine());
+            client.Address = IPAddress.Parse("127.0.0.1");
         }
         static void Main(string[] args)
         {
