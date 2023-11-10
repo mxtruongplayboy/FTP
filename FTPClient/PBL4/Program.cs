@@ -54,39 +54,36 @@ namespace FtpClient
                         case "CONNECT":
                             client.Connect();
                             break;
-                        case "LOGIN":
-                            client.Login();
-                            break;
                         case "LOGOUT":
-                            client.Logout();
+                            //client.Logout();
                             break;
                         case "CR":
-                            client.CurrentDirectory();
+                            //client.CurrentDirectory();
                             break;
                         case "CD":
                             Console.Write(">Go to folder: ");
                             folder = Console.ReadLine();
-                            client.ChangeDirectory(folder);
+                            //client.ChangeDirectory(folder);
                             break;
                         case "MKDIR":
                             Console.Write(">New folder name: ");
                             folder = Console.ReadLine();
-                            client.CreateDirectory(folder);
+                            //client.CreateDirectory(folder);
                             break;
                         case "RMDIR":
                             Console.Write(">Folder to remove: ");
                             folder = Console.ReadLine();
-                            client.RemoveDirectory(folder);
+                            //client.RemoveDirectory(folder);
                             break;
                         case "DIR":
-                            client.List();
+                            //client.List();
                             break;
                         case "DOWNLOAD":
                             Console.Write(">File name remote: ");
                             fileRemote = Console.ReadLine();
                             Console.Write(">File name local: ");
                             fileLocal = Console.ReadLine();
-                            client.DownloadFolder(fileRemote, fileLocal);
+                            client.Download(fileRemote, fileLocal);
                             break;
                         case "UPLOAD":
                             //Console.Write(">File name: ");

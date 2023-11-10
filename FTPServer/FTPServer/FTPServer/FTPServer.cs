@@ -92,6 +92,8 @@ namespace FTPServer
             _reader = new StreamReader(client.GetStream());
             _writer = new StreamWriter(client.GetStream()) { AutoFlush = true };
             IPAddress IPClient = ((IPEndPoint)client.Client.RemoteEndPoint).Address;
+            TcpListener data_listener = new TcpListener(a * 256 + b);
+            TcpClient data_channel = new TcpClient();
             string _command;
             int sessionID = GetSessionID();
             string nameSission = "FTP Session " + sessionID + " " + IPClient.ToString() + " ";
@@ -146,26 +148,32 @@ namespace FTPServer
                             reNewPort(a, b);
                             _command = "227 Entering Passive Mode (" + IP + "," + a + "," + b + ")";
                             Command = nameSission + _command;
-                            TcpListener data_channel = new TcpListener(Address, a * 256 + b);
+                            data_listener = new TcpListener(Address, a * 256 + b);
                             try
                             {
-                                data_channel.Start();
+                                data_listener.Start();
                             }
                             catch
                             {
                                 Command = "Lỡ bị lỗi";
-                                reNewPort(a, b);
-                                Command = "227 Entering Passive Mode (" + IP + "," + a + "," + b + ")";
-                                TcpListener data_channels = new TcpListener(Address, a * 256 + b);
-                                data_channels.Start();
                             }
                             _writer.WriteLine(_command);
+                            data_channel = data_listener.AcceptTcpClient();
+                            Console.WriteLine("OK");
                         }
                         else if(command == "CWD")
                         {
-                            string path = Path.GetFullPath(Path.Combine(_rootPath, parts[1]));
-                            path = path.Replace("\\", "/");
-                            if(parts[1] == "")
+                            string path;
+                            if (parts[1] == "/")
+                            {
+                                path = _rootPath;
+                            }
+                            else
+                            {
+                                path = Path.GetFullPath(Path.Combine(currentFilePath, parts[1]));
+                                path = path.Replace("\\", "/");
+                            }
+                            if (parts[1] == "")
                             {
                                 _command = "501 Missing required argument";
                             }
@@ -183,11 +191,98 @@ namespace FTPServer
                                 _command = "550 Couldn't open the file or directory";
                             }
                             Command = nameSission + _command;
-                            _writer.WriteLine(Command);
+                            _writer.WriteLine(_command);
                         }
                         else if(command == "NLST")
                         {
+                            string path = Path.GetFullPath(Path.Combine(_rootPath, parts[1]));
+                            path = path.Replace("\\", "/");
+                            if (Directory.Exists(path) && data_channel.Connected)
+                            {
+                                _command = "150 About to start data transfer.";
+                                Command = nameSission + _command;
+                                _writer.WriteLine(_command);
 
+                                List<string> fileAndDirectoryNames = new List<string>();
+                                DirectoryInfo parentDirectory = new DirectoryInfo(path);
+                                DirectoryInfo[] subDirectories = parentDirectory.GetDirectories();
+                                FileInfo[] files = parentDirectory.GetFiles();
+
+                                foreach (var subDir in subDirectories)
+                                {
+                                    fileAndDirectoryNames.Add(subDir.FullName.Replace("\\", "/"));
+                                }
+
+                                foreach (var file in files)
+                                {
+                                    fileAndDirectoryNames.Add(file.FullName.Replace("\\", "/"));
+                                }
+
+                                StreamWriter sw = new StreamWriter(data_channel.GetStream());
+
+                                foreach (string item in fileAndDirectoryNames)
+                                {
+                                    sw.WriteLine(item);
+                                }
+
+                                _command = "226 Operation successful";
+                                Command = nameSission + _command;
+                                _writer.WriteLine(_command);
+
+                                sw.Close();
+                                data_channel.Close();
+                                data_listener.Stop();
+                            }
+                            else
+                            {
+                                _command = "550 Couldn't open the file or directory";
+                                Command = nameSission + _command;
+                                _writer.WriteLine(_command);
+                            }
+                        }
+                        else if(command == "RETR")
+                        {
+                            string path = Path.GetFullPath(Path.Combine(_rootPath, parts[1]));
+                            path = path.Replace("\\", "/");
+                            if (Directory.Exists(path) && data_channel.Connected)
+                            {
+                                _command = "150 About to start data transfer.";
+                                Command = nameSission + _command;
+                                _writer.WriteLine(_command);
+
+                                NetworkStream ns = data_channel.GetStream();
+                                int blocksize = 1024;
+                                byte[] buffer = new byte[blocksize];
+                                int byteread = 0;
+                                lock (this)
+                                {
+                                    FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read);
+                                    while (true)
+                                    {
+                                        byteread = fs.Read(buffer, 0, blocksize);
+                                        ns.Write(buffer, 0, byteread);
+                                        if (byteread == 0)
+                                        {
+                                            break;
+                                        }
+                                    }
+                                    ns.Flush();
+                                    ns.Close();
+                                }
+
+                                _command = "226 Operation successful";
+                                Command = nameSission + _command;
+                                _writer.WriteLine(_command);
+
+                                data_channel.Close();
+                                data_listener.Stop();
+                            }
+                            else
+                            {
+                                _command = "550 Couldn't open the file or directory";
+                                Command = nameSission + _command;
+                                _writer.WriteLine(_command);
+                            }
                         }
                     }
                     else //Login failed
