@@ -15,41 +15,16 @@ namespace FTPClient
         TcpClient _controlSocket = new TcpClient();
         StreamWriter _writer;
         StreamReader _reader;
-        readonly BindingList<string> _responses;
-        readonly BindingList<string> _commands;
-        public string Command
-        {
-            get => _commands.Last();
-            private set
-            {
-                if (!string.IsNullOrEmpty(value))
-                {
-                    _commands.Add(value);
-                }
-            }
-        }
-        public string Response
-        {
-            get => _responses.Last();
-            private set
-            {
-                if (!string.IsNullOrEmpty(value))
-                {
-                    _responses.Add(value);
-                }
-            }
-        }
+        public bool status = true;
         public IPAddress Address { get; set; }
         public string User { get; set; }
         public string Password { get; set; }
         public bool Connected => _controlSocket.Connected;
         public bool LoggedOn { get; private set; }
         #endregion
-        #region Commands  
-        public FTPSession(IPAddress Address, string User,string Password,BindingList<string> _responses, BindingList<string> _commands)
+        #region command
+        public FTPSession(IPAddress Address, string User,string Password)
         {
-            this._responses = _responses;
-            this._commands = _commands;
             this.Address = Address; 
             this.User = User;
             this.Password = Password;
@@ -61,11 +36,10 @@ namespace FTPClient
                 _controlSocket.Connect(Address, 21);
                 if (_controlSocket.Connected)
                 {
-                    
                     _reader = new StreamReader(_controlSocket.GetStream());
                     _writer = new StreamWriter(_controlSocket.GetStream()) { AutoFlush = true };
                     StringBuilder sb = new StringBuilder();
-                    Response = _reader.ReadLine();
+                    string Response = _reader.ReadLine();
                     if (Response.StartsWith("220-"))
                     {
                         while (true)
@@ -82,9 +56,9 @@ namespace FTPClient
         }
         public void Login()
         {
-            Command = string.Format("USER {0}", User);
+            string Command = string.Format("USER {0}", User);
             _writer.WriteLine(Command);
-            Response = _reader.ReadLine();
+            string Response = _reader.ReadLine();
             if (Response.StartsWith("331 "))
             {
                 Command = string.Format("PASS {0}", Password);
@@ -97,9 +71,9 @@ namespace FTPClient
         {
             if (_controlSocket.Connected && LoggedOn)
             {
-                Command = "QUIT";
+                string Command = "QUIT";
                 _writer.WriteLine(Command);
-                Response = _reader.ReadLine();
+                string Response = _reader.ReadLine();
                 if (Response.StartsWith("221 "))
                 {
                     LoggedOn = false;
@@ -109,33 +83,33 @@ namespace FTPClient
         }
         public void RemoveDirectory(string dir)
         {
-            Command = string.Format("RMD {0}", dir);
+            string Command = string.Format("RMD {0}", dir);
             _writer.WriteLine(Command);
-            Response = _reader.ReadLine();
+            string Response = _reader.ReadLine();
         }
         public void CreateDirectory(string dir)
         {
-            Command = string.Format("MKD {0}", dir);
+            string Command = string.Format("MKD {0}", dir);
             _writer.WriteLine(Command);
-            Response = _reader.ReadLine();
+            string Response = _reader.ReadLine();
         }
         public void ChangeDirectory(string dir)
         {
-            Command = string.Format("CWD {0}", dir);
+            string Command = string.Format("CWD {0}", dir);
             _writer.WriteLine(Command);
-            Response = _reader.ReadLine();
+            string Response = _reader.ReadLine();
         }
         public void CurrentDirectory()
         {
-            Command = "PWD";
+            string Command = "PWD";
             _writer.WriteLine(Command);
-            Response = _reader.ReadLine();
+            string Response = _reader.ReadLine();
         }
         public void Upload(string filename)
         {
-            Command = "PASV";
+            string Command = "PASV";
             _writer.WriteLine(Command);
-            Response = _reader.ReadLine();
+            string Response = _reader.ReadLine();
             if (Response.StartsWith("227 "))
             {
                 IPEndPoint server_data_endpoint = GetServerEndpoint(Response);
@@ -176,6 +150,8 @@ namespace FTPClient
             }
         }
 
+        public event Action<string, string> FileDownloaded;
+
         public void DownloadFolder(string remoteFilePath, string localFilePath)
         {
             if (IsDirectory(remoteFilePath))
@@ -199,15 +175,20 @@ namespace FTPClient
             }
             else
             {
-                Download(Path.GetDirectoryName(remoteFilePath), Path.GetFileName(remoteFilePath), localFilePath);
+                OnFileDownloaded(remoteFilePath, localFilePath);
             }
+        }
+
+        protected virtual void OnFileDownloaded(string remoteFile, string localFile)
+        {
+            FileDownloaded?.Invoke(remoteFile, localFile);
         }
 
         public List<string> ListFilesAndFolders(string folderPath)
         {
-            Command = string.Format("CWD {0}", "/");
+            string Command = string.Format("CWD {0}", "/");
             _writer.WriteLine(Command);
-            Response = _reader.ReadLine();
+            string Response = _reader.ReadLine();
             if (Response.StartsWith("250 "))
             {
                 Command = "PASV";
@@ -248,9 +229,9 @@ namespace FTPClient
 
         public bool IsDirectory(string path)
         {
-            Command = string.Format("CWD {0}", "/");
+            string Command = string.Format("CWD {0}", "/");
             _writer.WriteLine(Command);
-            Response = _reader.ReadLine();
+            string Response = _reader.ReadLine();
             if (Response.StartsWith("250 "))
             {
                 // Gửi lệnh CWD để thay đổi đến đường dẫn cụ thể
@@ -271,9 +252,9 @@ namespace FTPClient
 
         public void Download(string remoteFolderPath, string remoteFilePath, string localFilePath)
         {
-            Command = string.Format("CWD {0}", remoteFolderPath.Replace("\\", "/"));
+            string Command = string.Format("CWD {0}", remoteFolderPath.Replace("\\", "/"));
             _writer.WriteLine(Command);
-            Response = _reader.ReadLine();
+            string Response = _reader.ReadLine();
             if (Response.StartsWith("250 "))
             {
                 Command = "PASV";
@@ -321,9 +302,9 @@ namespace FTPClient
         }
         public void List()
         {
-            Command = "PASV";
+            string Command = "PASV";
             _writer.WriteLine(Command);
-            Response = _reader.ReadLine();
+            string Response = _reader.ReadLine();
             if (Response.StartsWith("227 "))
             {
                 IPEndPoint server_data_endpoint = GetServerEndpoint(Response);
@@ -358,6 +339,5 @@ namespace FTPClient
             return new IPEndPoint(address, port);
         }
         #endregion
-        
     }
 }

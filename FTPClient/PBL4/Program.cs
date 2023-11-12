@@ -14,11 +14,7 @@ namespace FtpClient
         }
         static void Reset(ref FtpClient client)
         {
-            client = new FtpClient
-            {
-                ResponseListChangedHandler = s => { Console.WriteLine("S> {0}", s); },
-                CommandListChangedHandler = s => Console.WriteLine("C> {0}", s)
-            };
+            client = new FtpClient();
             Console.Write("User: ");
             client.User = "user";
             Console.Write("Password: ");

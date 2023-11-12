@@ -14,35 +14,9 @@ namespace FTPServer
     {
         int a, b;
         TcpListener _controlSocket;
-        StreamWriter _writer;
-        StreamReader _reader;
         int _sessionID = 2;
-        readonly BindingList<string> _responses = new BindingList<string>();
-        readonly BindingList<string> _commands = new BindingList<string>();
         readonly string _rootPath = @"E:/LEARN-04/PBL4/FileServer";
-
-        public string Command
-        {
-            get => _commands.Last();
-            private set
-            {
-                if (!string.IsNullOrEmpty(value))
-                {
-                    _commands.Add(value);
-                }
-            }
-        }
-        public string Response
-        {
-            get => _responses.Last();
-            private set
-            {
-                if (!string.IsNullOrEmpty(value))
-                {
-                    _responses.Add(value);
-                }
-            }
-        }
+        private object lockObject = new object();
 
         public IPAddress Address { get; set; }
         public string User { get; set; }
@@ -54,13 +28,7 @@ namespace FTPServer
             User = "user";
             Password = "mxt@3132003";
             randomPort();
-            _responses.Clear();
-            _commands.Clear();
             _controlSocket = new TcpListener(Address, 21);
-            _responses.ListChanged -= Responses_ListChanged;
-            _responses.ListChanged += Responses_ListChanged;
-            _commands.ListChanged -= Commands_ListChanged;
-            _commands.ListChanged += Commands_ListChanged;
             isRunning = true;
             try
             {
@@ -68,7 +36,7 @@ namespace FTPServer
             }
             catch
             {
-                Command = "Lỗi Start Server!!! Vui lòng kiểm tra lại";
+                CommandStatus("Server", "Lỗi Start Server!!! Vui lòng kiểm tra lại");
                 return;
             }
             Console.WriteLine("FTP Server is running...");
@@ -89,19 +57,19 @@ namespace FTPServer
         private void HandleClient(object obj)
         {
             TcpClient client = (TcpClient)obj;
-            _reader = new StreamReader(client.GetStream());
-            _writer = new StreamWriter(client.GetStream()) { AutoFlush = true };
+            StreamReader _reader = new StreamReader(client.GetStream());
+            StreamWriter _writer = new StreamWriter(client.GetStream()) { AutoFlush = true };
             IPAddress IPClient = ((IPEndPoint)client.Client.RemoteEndPoint).Address;
-            TcpListener data_listener = new TcpListener(a * 256 + b);
+            TcpListener data_listener = new TcpListener(0);
             TcpClient data_channel = new TcpClient();
             string _command;
             int sessionID = GetSessionID();
             string nameSission = "FTP Session " + sessionID + " " + IPClient.ToString() + " ";
             _command = "220-Welcome to FTP Server";
-            Command = nameSission + _command;
+            CommandStatus(nameSission, _command);
             _writer.WriteLine(_command);
             _command = "220 FTP Server MXT";
-            Command = nameSission + _command;
+            CommandStatus(nameSission, _command);
             _writer.WriteLine(_command);
             
             string username = null;
@@ -119,7 +87,7 @@ namespace FTPServer
                     if (request == null)
                         break;
 
-                    Response = nameSission + request;
+                    ResponseStatus(nameSission, request);
 
                     string[] parts = request.Split(' ');
                     string command = parts[0].ToUpperInvariant();
@@ -130,13 +98,13 @@ namespace FTPServer
                         if (command == "USER")
                         {
                             _command = "503 Already logged in. QUIT first.";
-                            Command = nameSission + _command;
+                            CommandStatus(nameSission, _command);
                             _writer.WriteLine(_command);
                         }
                         else if (command == "QUIT")
                         {
                             _command = "221 Goodbye";
-                            Command = nameSission + _command;
+                            CommandStatus(nameSission, _command);
                             _writer.WriteLine(_command);
                             isLoggedIn = false;
                             break;
@@ -145,9 +113,9 @@ namespace FTPServer
                         {
                             string[] ipAddressParts = Address.ToString().Split('.');
                             string IP = string.Join(",", ipAddressParts);
-                            reNewPort(a, b);
+                            reNewPort();
                             _command = "227 Entering Passive Mode (" + IP + "," + a + "," + b + ")";
-                            Command = nameSission + _command;
+                            CommandStatus(nameSission, _command);
                             data_listener = new TcpListener(Address, a * 256 + b);
                             try
                             {
@@ -155,7 +123,8 @@ namespace FTPServer
                             }
                             catch
                             {
-                                Command = "Lỡ bị lỗi";
+                                _command = "Lỗi";
+                                CommandStatus(nameSission, _command);
                             }
                             _writer.WriteLine(_command);
                             data_channel = data_listener.AcceptTcpClient();
@@ -170,7 +139,7 @@ namespace FTPServer
                             }
                             else
                             {
-                                path = Path.GetFullPath(Path.Combine(currentFilePath, parts[1]));
+                                path = Path.GetFullPath(Path.Combine(_rootPath, parts[1]));
                                 path = path.Replace("\\", "/");
                             }
                             if (parts[1] == "")
@@ -190,17 +159,19 @@ namespace FTPServer
                             {
                                 _command = "550 Couldn't open the file or directory";
                             }
-                            Command = nameSission + _command;
+                            Console.WriteLine(path);
+                            CommandStatus(nameSission, _command);
                             _writer.WriteLine(_command);
+                            Console.WriteLine("Day roi");
                         }
                         else if(command == "NLST")
                         {
-                            string path = Path.GetFullPath(Path.Combine(_rootPath, parts[1]));
+                            string path = Path.GetFullPath(Path.Combine(currentFilePath, parts[1]));
                             path = path.Replace("\\", "/");
                             if (Directory.Exists(path) && data_channel.Connected)
                             {
                                 _command = "150 About to start data transfer.";
-                                Command = nameSission + _command;
+                                CommandStatus(nameSission, _command);
                                 _writer.WriteLine(_command);
 
                                 List<string> fileAndDirectoryNames = new List<string>();
@@ -226,7 +197,7 @@ namespace FTPServer
                                 }
 
                                 _command = "226 Operation successful";
-                                Command = nameSission + _command;
+                                CommandStatus(nameSission, _command);
                                 _writer.WriteLine(_command);
 
                                 sw.Close();
@@ -236,18 +207,19 @@ namespace FTPServer
                             else
                             {
                                 _command = "550 Couldn't open the file or directory";
-                                Command = nameSission + _command;
+                                CommandStatus(nameSission, _command);
                                 _writer.WriteLine(_command);
                             }
                         }
                         else if(command == "RETR")
                         {
-                            string path = Path.GetFullPath(Path.Combine(_rootPath, parts[1]));
+                            string path = Path.GetFullPath(Path.Combine(currentFilePath, parts[1]));
                             path = path.Replace("\\", "/");
-                            if (Directory.Exists(path) && data_channel.Connected)
+                            Console.WriteLine(path);
+                            if (File.Exists(path) && data_channel.Connected)
                             {
                                 _command = "150 About to start data transfer.";
-                                Command = nameSission + _command;
+                                CommandStatus(nameSission, _command);
                                 _writer.WriteLine(_command);
 
                                 NetworkStream ns = data_channel.GetStream();
@@ -271,7 +243,7 @@ namespace FTPServer
                                 }
 
                                 _command = "226 Operation successful";
-                                Command = nameSission + _command;
+                                CommandStatus(nameSission, _command);
                                 _writer.WriteLine(_command);
 
                                 data_channel.Close();
@@ -280,7 +252,7 @@ namespace FTPServer
                             else
                             {
                                 _command = "550 Couldn't open the file or directory";
-                                Command = nameSission + _command;
+                                CommandStatus(nameSission, _command);
                                 _writer.WriteLine(_command);
                             }
                         }
@@ -291,7 +263,7 @@ namespace FTPServer
                         {
                             _command = "331 User name okay, need password.";
                             username = parts.Length > 1 ? parts[1] : null;
-                            Command = nameSission + _command;
+                            CommandStatus(nameSission, _command);
                             _writer.WriteLine(_command);
                         }
                         else if (command == "PASS")
@@ -300,20 +272,20 @@ namespace FTPServer
                             {
                                 _command = "230 User logged in, proceed.";
                                 isLoggedIn = true;
-                                Command = nameSission + _command;
+                                CommandStatus(nameSission, _command);
                                 _writer.WriteLine(_command);
                             }
                             else
                             {
                                 _command = "530 Not logged in.";
-                                Command = nameSission + _command;
+                                CommandStatus(nameSission, _command);
                                 _writer.WriteLine(_command);
                             }
                         }
                         else
                         {
                             _command = "530 Please log in with USER and PASS first.";
-                            Command = nameSission + _command;
+                            CommandStatus(nameSission, _command);
                             _writer.WriteLine(_command);
                         }
                     }
@@ -332,56 +304,61 @@ namespace FTPServer
         public void randomPort()
         {
             Random random = new Random();
-            a = random.Next(4, 256);
-            b = random.Next(0, 256);
+            this.a = random.Next(4, 256);
+            this.b = random.Next(0, 256);
         }
 
-        public void reNewPort(int a, int b)
+        public void reNewPort()
         {
-            b += 2;
-            if (b > 255) a += 1;
-            if (a > 255)
+           lock (lockObject)
             {
-                a = 4;
-                if (b % 2 == 0) b = 1;
-                else b = 0;
-            }
-            TcpListener listener = new TcpListener(Address, a * 256 + b);
-            try
-            {
-                listener.Start();
-            }
-            catch (SocketException)
-            {
-                reNewPort(a, b);
-            }
-            finally
-            {
-                listener.Stop();
+                b += 2;
+                if (b > 255) a += 1;
+                if (a > 255)
+                {
+                    a = 4;
+                    if (b % 2 == 0) b = 1;
+                    else b = 0;
+                }
+                TcpListener listener = new TcpListener(Address, a * 256 + b);
+                try
+                {
+                    listener.Start();
+                }
+                catch (SocketException)
+                {
+                    reNewPort();
+                }
+                finally
+                {
+                    listener.Stop();
+                }
             }
         }
 
         private int GetSessionID()
         {
-            return _sessionID++;
-        }
-
-        public Action<string> ResponseListChangedHandler { get; set; }
-        public Action<string> CommandListChangedHandler { get; set; }
-        private void Responses_ListChanged(object sender, ListChangedEventArgs e)
-        {
-            if (e.ListChangedType == ListChangedType.ItemAdded)
+            lock (lockObject)
             {
-                string response = _responses[e.NewIndex];
-                ResponseListChangedHandler?.Invoke(response);
+                return _sessionID++;
             }
         }
-        private void Commands_ListChanged(object sender, ListChangedEventArgs e)
+
+        private void CommandStatus(string sessionId, string message)
         {
-            if (e.ListChangedType == ListChangedType.ItemAdded)
+            lock(lockObject)
             {
-                string command = _commands[e.NewIndex];
-                CommandListChangedHandler?.Invoke(command);
+                DateTime now = DateTime.Now;
+                Console.WriteLine($"C> {now}\tSession {sessionId}\t {message}");
+            }
+        }
+
+        private void ResponseStatus(string sessionId, string message)
+        {
+            lock (lockObject)
+            {
+                DateTime now = DateTime.Now;
+                Console.WriteLine($"S> {now}\tSession {sessionId}\t {message}");
             }
         }
     }

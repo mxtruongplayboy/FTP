@@ -9,8 +9,6 @@ namespace FTPServer
             Console.OutputEncoding = System.Text.Encoding.UTF8;
             Console.InputEncoding = System.Text.Encoding.UTF8;
             FTPServer server = new FTPServer();
-            server.ResponseListChangedHandler = s => Console.WriteLine("C> {0}", s);
-            server.CommandListChangedHandler = s => Console.WriteLine("S> {0}", s);
             server.Start();
         }
     }
