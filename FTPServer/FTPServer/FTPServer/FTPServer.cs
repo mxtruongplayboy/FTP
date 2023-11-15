@@ -24,7 +24,7 @@ namespace FTPServer
         public bool isRunning;
         public void Start()
         {
-            Address = IPAddress.Parse("127.0.0.1");
+            Address = IPAddress.Parse("192.168.38.118");
             User = "user";
             Password = "mxt@3132003";
             randomPort();
@@ -123,12 +123,13 @@ namespace FTPServer
                             }
                             catch
                             {
-                                _command = "Lỗi";
+                                reNewPort();
+                                _command = "227 Entering Passive Mode (" + IP + "," + a + "," + b + ")";
                                 CommandStatus(nameSission, _command);
+                                data_listener = new TcpListener(Address, a * 256 + b);
                             }
                             _writer.WriteLine(_command);
                             data_channel = data_listener.AcceptTcpClient();
-                            Console.WriteLine("OK");
                         }
                         else if(command == "CWD")
                         {
@@ -159,10 +160,8 @@ namespace FTPServer
                             {
                                 _command = "550 Couldn't open the file or directory";
                             }
-                            Console.WriteLine(path);
                             CommandStatus(nameSission, _command);
                             _writer.WriteLine(_command);
-                            Console.WriteLine("Day roi");
                         }
                         else if(command == "NLST")
                         {
@@ -215,7 +214,6 @@ namespace FTPServer
                         {
                             string path = Path.GetFullPath(Path.Combine(currentFilePath, parts[1]));
                             path = path.Replace("\\", "/");
-                            Console.WriteLine(path);
                             if (File.Exists(path) && data_channel.Connected)
                             {
                                 _command = "150 About to start data transfer.";
@@ -349,7 +347,7 @@ namespace FTPServer
             lock(lockObject)
             {
                 DateTime now = DateTime.Now;
-                Console.WriteLine($"C> {now}\tSession {sessionId}\t {message}");
+                Console.WriteLine($"C> {now}\tSession {sessionId}\t {message} \n");
             }
         }
 
@@ -358,7 +356,7 @@ namespace FTPServer
             lock (lockObject)
             {
                 DateTime now = DateTime.Now;
-                Console.WriteLine($"S> {now}\tSession {sessionId}\t {message}");
+                Console.WriteLine($"S> {now}\tSession {sessionId}\t {message} \n");
             }
         }
     }

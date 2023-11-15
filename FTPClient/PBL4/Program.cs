@@ -20,7 +20,7 @@ namespace FtpClient
             Console.Write("Password: ");
             client.Password = "mxt@3132003";
             Console.Write("IP: ");
-            client.Address = IPAddress.Parse("127.0.0.1");
+            client.Address = IPAddress.Parse("192.168.38.118");
         }
         static void Main(string[] args)
         {
