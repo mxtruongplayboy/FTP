@@ -7,6 +7,9 @@ using System.Net;
 using System.Text;
 using System.Threading.Tasks;
 using System.Reflection.PortableExecutable;
+using System.Threading;
+using System.IO;
+using System.Reflection;
 
 namespace FTPServer
 {
@@ -24,7 +27,7 @@ namespace FTPServer
         public bool isRunning;
         public void Start()
         {
-            Address = IPAddress.Parse("192.168.38.118");
+            Address = IPAddress.Parse("127.0.0.1");
             User = "user";
             Password = "mxt@3132003";
             randomPort();
@@ -61,8 +64,8 @@ namespace FTPServer
             StreamWriter _writer = new StreamWriter(client.GetStream()) { AutoFlush = true };
             IPAddress IPClient = ((IPEndPoint)client.Client.RemoteEndPoint).Address;
             TcpListener data_listener = new TcpListener(0);
-            TcpClient data_channel = new TcpClient();
             string _command;
+            string _respond;
             int sessionID = GetSessionID();
             string nameSission = "FTP Session " + sessionID + " " + IPClient.ToString() + " ";
             _command = "220-Welcome to FTP Server";
@@ -129,7 +132,6 @@ namespace FTPServer
                                 data_listener = new TcpListener(Address, a * 256 + b);
                             }
                             _writer.WriteLine(_command);
-                            data_channel = data_listener.AcceptTcpClient();
                         }
                         else if(command == "CWD")
                         {
@@ -165,6 +167,7 @@ namespace FTPServer
                         }
                         else if(command == "NLST")
                         {
+                            TcpClient data_channel = data_listener.AcceptTcpClient();
                             string path = Path.GetFullPath(Path.Combine(currentFilePath, parts[1]));
                             path = path.Replace("\\", "/");
                             if (Directory.Exists(path) && data_channel.Connected)
@@ -214,38 +217,37 @@ namespace FTPServer
                         {
                             string path = Path.GetFullPath(Path.Combine(currentFilePath, parts[1]));
                             path = path.Replace("\\", "/");
-                            if (File.Exists(path) && data_channel.Connected)
+                            if(File.Exists(path))
                             {
                                 _command = "150 About to start data transfer.";
                                 CommandStatus(nameSission, _command);
                                 _writer.WriteLine(_command);
 
-                                NetworkStream ns = data_channel.GetStream();
-                                int blocksize = 1024;
-                                byte[] buffer = new byte[blocksize];
-                                int byteread = 0;
-                                lock (this)
+                                using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read))
                                 {
-                                    FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read);
-                                    while (true)
+                                    long length = fs.Length;
+                                    _command = $"{length}";
+                                    CommandStatus(nameSission, _command);
+                                    _writer.WriteLine(_command);
+
+                                    long block = (int)Math.Pow(2, 20) * 256;
+                                    int numThread = (int)Math.Ceiling((double)length / block);
+                                    int numThreadNow = 0;
+                                    while(numThreadNow < numThread)
                                     {
-                                        byteread = fs.Read(buffer, 0, blocksize);
-                                        ns.Write(buffer, 0, byteread);
-                                        if (byteread == 0)
-                                        {
-                                            break;
-                                        }
+                                        TcpClient data_channel = data_listener.AcceptTcpClient();
+                                        long num = numThreadNow;
+                                        Thread thread = new Thread(() => HandleTransfer(data_channel, path, num * block, block));
+                                        numThreadNow++;
+                                        thread.Start();
                                     }
-                                    ns.Flush();
-                                    ns.Close();
                                 }
+                                _respond = _reader.ReadLine();
+                                ResponseStatus(nameSission, _respond);
 
                                 _command = "226 Operation successful";
                                 CommandStatus(nameSission, _command);
-                                _writer.WriteLine(_command);
-
-                                data_channel.Close();
-                                data_listener.Stop();
+                                _writer.WriteLine(_command);                             
                             }
                             else
                             {
@@ -299,6 +301,38 @@ namespace FTPServer
             
         }
 
+        private void HandleTransfer(TcpClient data_channel,string fileName, long offset, long length)
+        {
+            StreamReader _reader = new StreamReader(data_channel.GetStream());
+            StreamWriter _writer = new StreamWriter(data_channel.GetStream()) { AutoFlush = true };
+            try
+            {
+                NetworkStream ns = data_channel.GetStream();
+                int blocksize = 1024;
+                byte[] buffer = new byte[blocksize];
+                int byteread = 0;
+                FileStream fs = new FileStream(fileName, FileMode.Open, FileAccess.Read);
+                fs.Seek(offset, SeekOrigin.Begin);
+                long i = 0;
+                while (i < length)
+                {
+                    byteread = fs.Read(buffer, 0, (int)Math.Min(blocksize, length - i));
+                    ns.Write(buffer, 0, byteread);
+                    if (byteread == 0)
+                    {
+                        break;
+                    }
+                    i += byteread;
+                }
+                ns.Close();
+                fs.Close();
+            }
+            catch (IOException ex)
+            {
+                Console.WriteLine(ex.ToString());
+            }
+        }
+
         public void randomPort()
         {
             Random random = new Random();
@@ -347,7 +381,7 @@ namespace FTPServer
             lock(lockObject)
             {
                 DateTime now = DateTime.Now;
-                Console.WriteLine($"C> {now}\tSession {sessionId}\t {message} \n");
+                Console.WriteLine($"S> {now}\tSession {sessionId}\t {message} \n");
             }
         }
 
@@ -356,7 +390,7 @@ namespace FTPServer
             lock (lockObject)
             {
                 DateTime now = DateTime.Now;
-                Console.WriteLine($"S> {now}\tSession {sessionId}\t {message} \n");
+                Console.WriteLine($"C> {now}\tSession {sessionId}\t {message} \n");
             }
         }
     }

@@ -1,12 +1,5 @@
 ﻿using FTPClient;
-using System;
-using System.ComponentModel;
-using System.IO;
-using System.Linq;
 using System.Net;
-using System.Net.Sockets;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace FtpClient
 {
@@ -31,7 +24,6 @@ namespace FtpClient
         #region Commands  
         public void Connect()
         {
-            vuivui();
             _mainSession = new FTPSession(Address, User, Password);
             _mainSession.FileDownloaded += HandleFileDownloaded;
 
@@ -49,12 +41,6 @@ namespace FtpClient
                 _taskMain.Add(task);
             }
             if(_mainSession.status) TaskMainProcess(_mainSession);
-        }
-
-        public void vuivui()
-        {
-            Random random = new Random();
-            this.a = random.Next(4, 256);
         }
 
         public void TaskMainProcess(FTPSession mainSession)

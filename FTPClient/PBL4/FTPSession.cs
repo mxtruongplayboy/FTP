@@ -6,6 +6,8 @@ using System.Net.Sockets;
 using System.Net;
 using System.Text;
 using System.Threading.Tasks;
+using System.IO;
+using System.Reflection;
 
 namespace FTPClient
 {
@@ -16,6 +18,10 @@ namespace FTPClient
         StreamWriter _writer;
         StreamReader _reader;
         public bool status = true;
+        private readonly object lockObject = new object();
+        private readonly object lockObject2 = new object();
+        List<string> partFilePaths = new List<string>();
+        private int currentSuccessThreadCount = 0;
         public IPAddress Address { get; set; }
         public string User { get; set; }
         public string Password { get; set; }
@@ -198,11 +204,13 @@ namespace FTPClient
                 {
                     IPEndPoint server_data_endpoint = GetServerEndpoint(Response);
                     Command = server_data_endpoint.ToString();
-                    TcpClient data_channel = new TcpClient();
-                    data_channel.Connect(server_data_endpoint);
 
                     Command = string.Format("NLST {0}", folderPath.Replace("\\", "/"));
                     _writer.WriteLine(Command);
+
+                    TcpClient data_channel = new TcpClient();
+                    data_channel.Connect(server_data_endpoint);
+
                     Response = _reader.ReadLine();
                     if (Response.StartsWith("150 "))
                     {
@@ -249,7 +257,6 @@ namespace FTPClient
             return false;
         }
 
-
         public void Download(string remoteFolderPath, string remoteFilePath, string localFilePath)
         {
             string Command = string.Format("CWD {0}", remoteFolderPath.Replace("\\", "/"));
@@ -264,42 +271,124 @@ namespace FTPClient
                 {
                     IPEndPoint server_data_endpoint = GetServerEndpoint(Response);
                     Command = server_data_endpoint.ToString();
-                    TcpClient data_channel = new TcpClient();
-                    data_channel.Connect(server_data_endpoint);
 
                     Command = string.Format("RETR {0}", remoteFilePath);
                     _writer.WriteLine(Command);
                     Response = _reader.ReadLine();
+
                     if (Response.StartsWith("150 "))
                     {
-                        NetworkStream ns = data_channel.GetStream();
-                        int blocksize = 1024;
-                        byte[] buffer = new byte[blocksize];
-                        int byteread = 0;
-                        lock (this)
+                        Response = _reader.ReadLine();
+                        long length = long.Parse(Response);
+                        long block = (int)Math.Pow(2, 20) * 256;
+                        int numThread = (int)Math.Ceiling((double)length / block);
+                        currentSuccessThreadCount = 0;
+
+                        int i = 0;
+                        while (true)
                         {
-                            FileStream fs = new FileStream(localFilePath, FileMode.OpenOrCreate, FileAccess.Write);
-                            while (true)
+                            if (i == numThread)
                             {
-                                byteread = ns.Read(buffer, 0, blocksize);
-                                fs.Write(buffer, 0, byteread);
-                                if (byteread == 0)
+                                if (currentSuccessThreadCount == numThread)
                                 {
+                                    Command = "Tranfer successful";
+                                    _writer.WriteLine(Command);
+                                    Merger(localFilePath);
                                     break;
                                 }
                             }
-                            fs.Flush();
-                            fs.Close();
+                            else
+                            {
+                                TcpClient data_channel = new TcpClient();
+                                data_channel.Connect(server_data_endpoint);
+                                int index = i;
+                                Thread thread = new Thread(() => HandleTransfer(data_channel, localFilePath, index));
+                                i++;
+                                thread.Start();
+                                Thread.Sleep(100);
+                            }
                         }
                         Response = _reader.ReadLine();
-                        if (Response.StartsWith("226 "))
-                        {
-                            data_channel.Close();
-                        }
                     }
                 }
             }
         }
+        private void Merger(string fullPath)
+        {
+            Console.WriteLine($"Merging... at {DateTime.Now}");
+            using (FileStream finalFileStream = new FileStream(fullPath, FileMode.OpenOrCreate, FileAccess.Write))
+            {
+                foreach (var partFilePath in partFilePaths)
+                {
+                    using (FileStream tempFileStream = new FileStream(partFilePath, FileMode.Open))
+                    {
+                        byte[] buffer = new byte[1024 * 1024];
+                        int bytesRead;
+                        while ((bytesRead = tempFileStream.Read(buffer, 0, buffer.Length)) > 0)
+                        {
+                            finalFileStream.Write(buffer, 0, bytesRead);
+                        }
+                    }
+                }
+            }
+            Console.WriteLine($"Created at {DateTime.Now} in {fullPath}");
+        }
+
+        public void HandleTransfer(TcpClient data_channel, string localFilePath, int index)
+        {
+            StreamReader _reader = new StreamReader(data_channel.GetStream());
+            StreamWriter _writer = new StreamWriter(data_channel.GetStream()) { AutoFlush = true };
+            //string command = "Already";
+            //Console.WriteLine(command);
+            //_writer.WriteLine(command);
+
+            NetworkStream ns = data_channel.GetStream();
+            int blocksize = 1024;
+            byte[] buffer = new byte[blocksize];
+            long block = (int)Math.Pow(2, 20) * 256;
+            int byteread = 0;
+
+            string fullPath2 = HandleFileName(localFilePath, index);
+            lock (lockObject)
+            {
+                partFilePaths.Add(fullPath2);
+            }
+
+            using (FileStream fs = new FileStream(fullPath2, FileMode.Create, FileAccess.Write))
+            {
+                while (true)
+                {
+                    byteread = ns.Read(buffer, 0, blocksize);
+                    fs.Write(buffer, 0, byteread);
+                    if (byteread == 0)
+                    {
+                        break;
+                    }
+                }
+            }
+            ns.Close();
+            lock (lockObject2)
+            {
+                currentSuccessThreadCount++;
+            }
+            Console.WriteLine($"Created at {DateTime.Now} in {fullPath2}");
+        }
+        private string HandleFileName(string filePath, int index)
+        {
+            string? folderPath = Path.GetDirectoryName(filePath);
+            if (folderPath == null)
+            {
+                throw new Exception("Folder path is null");
+            }
+            string fileName = Path.GetFileName(filePath);
+            string fileNameWithoutExtension = fileName.Split('.').First();
+            string fileExtension = fileName.Split('.').Last();
+            fileName = $"{fileNameWithoutExtension}({index++}).{fileExtension}";
+            filePath = @$"{folderPath}\{fileName}";
+
+            return filePath;
+        }
+
         public void List()
         {
             string Command = "PASV";
